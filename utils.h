@@ -5,9 +5,9 @@
  *       NOT be replaced during grading.
  ****************************************************/
 #ifndef UTILS_H_
-
+#include "tasks.h"
 #define UTILS_H_
 
 int partition(char *key, int num_partitions);
-
+char * mapTochar( MapTaskOutput* output );
 #endif 

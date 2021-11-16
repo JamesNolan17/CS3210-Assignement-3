@@ -5,7 +5,7 @@
  *       NOT be replaced during grading.
  ****************************************************/
 #include "utils.h"
-
+#include "tasks.h"
 /* Helper func to choose a partition based on `key`,*/
 int partition(char *key, int num_partitions) {
     unsigned long hash = 5381;
@@ -16,4 +16,7 @@ int partition(char *key, int num_partitions) {
     }
 
     return hash % num_partitions;
+}
+char * mapTochar( MapTaskOutput* output ){
+
 }

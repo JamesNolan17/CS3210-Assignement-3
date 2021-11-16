@@ -17,6 +17,9 @@ int partition(char *key, int num_partitions) {
 
     return hash % num_partitions;
 }
-char * mapTochar( MapTaskOutput* output ){
 
+void print_kvs(KeyValue *kvs ,int kvs_length){
+    printf("KVS TABLE:\n");
+    for (int i = 0; i < kvs_length; i++)
+        printf("%s - %d\n", kvs[i].key, kvs[i].val);
 }

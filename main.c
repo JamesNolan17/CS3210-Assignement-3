@@ -5,6 +5,8 @@
 #include "utils.h"
 
 #define BUFFER_SIZE 1000
+#define MAX_FILE_SIZE 10000
+#define MAX_KV_REC 999
 
 int main(int argc, char **argv) {
 
@@ -87,66 +89,114 @@ int main(int argc, char **argv) {
                 rc = MPI_Send(file_contents, strlen(file_contents), MPI_CHAR, dest, tag, MPI_COMM_WORLD);
                 dest++;
             }
+        }
+        //Receive results and combine them
+        for (int i = 0; i < num_reduce_workers; i++) {
 
         }
+
 
     } else if ((rank >= 1) && (rank <= num_map_workers)) {
         // TODO: Implement map worker process logic
         while (1) {
             printf("Rank (%d): This is a map worker process\n", rank);
+
+            //Receive the file content and perform map
             char *file_contents = (char *) malloc(BUFFER_SIZE);
             source = 0;
             tag = 0;
-            rc = MPI_Recv(file_contents, 10000, MPI_CHAR, source, tag, MPI_COMM_WORLD, &Stat);
-            //printf("%s\n", file_contents);
+            rc = MPI_Recv(file_contents, MAX_FILE_SIZE, MPI_CHAR, source, tag, MPI_COMM_WORLD, &Stat);
             MapTaskOutput *output = map(file_contents);
-            //dest = (rank % num_reduce_workers) + num_map_workers;
-            dest = 3;
-            //printf("%d\n", dest);
-            printf("Rank (%d): Sending KV pairs to reducer %d\n", rank, dest);
-            //Send KV length
-            rc = MPI_Send(&output->len, sizeof(int), MPI_INT, dest, tag, MPI_COMM_WORLD);
-            //send kvs
-            for (int i = 0; i < output->len; i++)
-                rc = MPI_Send(output->kvs, output->len * sizeof(KeyValue), MPI_CHAR, dest, tag, MPI_COMM_WORLD);
-            printf("Rank (%d): Sent KV pairs to reducer %d\n", rank, 3);
+
+            //Partition the output and send it to all reducers
+            KeyValue kvs_list[num_reduce_workers][MAX_KV_REC];
+            int count[num_reduce_workers];
+            for (int i = 0; i < num_reduce_workers; i++)
+                count[i] = 0;
+            int kvs_list_index;
+            for (int i = 0; i < output->len; i++) {
+                KeyValue kv = output->kvs[i];
+                kvs_list_index = partition(kv.key, num_reduce_workers);
+                int insert_loc = count[kvs_list_index];
+                kvs_list[kvs_list_index][insert_loc] = kv;
+                count[kvs_list_index]++;
+            }
+            for (int kvs_list_index = 0; kvs_list_index < num_reduce_workers; kvs_list_index++) {
+                //  printf("kvs_list_index : %d\n", kvs_list_index );
+                dest = kvs_list_index + num_map_workers + 1;
+                tag = 0;
+                int length = count[kvs_list_index];
+                printf("length: %d\n", length);
+                printf("dest: %d\n", dest);
+                rc = MPI_Send(&length, sizeof(int), MPI_INT, dest, tag, MPI_COMM_WORLD);
+                rc = MPI_Send(kvs_list[kvs_list_index], length * sizeof(KeyValue), MPI_CHAR, dest, tag,
+                              MPI_COMM_WORLD);
+            }
         }
     } else {
         // TODO: Implement reduce worker process logic
         printf("Rank (%d): This is a reduce worker process\n", rank);
         tag = 0;
-        KeyValueArray *final_kvs;
         int kv_index = 0;
-        for (int i = 1; i <= num_map_workers; i++) {
-            printf("FOR %d\n", i);
-            MapTaskOutput *output = (MapTaskOutput *) malloc(BUFFER_SIZE);
-            if (1) {
-                tag = 0;
+        KeyValueArray *match;
+        //Receive from all map workers
+        int kvs_length;
+        int files_no = 0;
+        int sender = 1;
+        KeyValue *kvs_list[num_files];
+        while (files_no < num_files) {
+            printf("Rank (%d): Waiting %d\n", rank, sender);
+            rc = MPI_Recv(&kvs_length, sizeof(int), MPI_INT, sender, tag, MPI_COMM_WORLD, &Stat);
+            printf("Rank (%d): received %d KV pairs from map worker %d\n", rank, kvs_length, sender);
 
-                int output_length;
+            char *data = (char *) malloc(BUFFER_SIZE);
+            rc = MPI_Recv(data, kvs_length * sizeof(KeyValue), MPI_CHAR, sender, tag, MPI_COMM_WORLD, &Stat);
+            KeyValue *kvs = ((KeyValue *) data);
+            kvs_list[files_no] = kvs;
+            printf("KVS TABLE:\n");
+            for (int i = 0; i < kvs_length; i++) {
+                printf("%s - %d\n", kvs[i].key, kvs[i].val);
+                kv_index++;
+            }
+            free(data);
 
-                printf("Pending to recv KV pairs from map worker %d\n", i);
-                //Recv length of the KV pairs
-                rc = MPI_Recv(&output_length, sizeof(int), MPI_INT, i, tag, MPI_COMM_WORLD, &Stat);
-                printf("Rank (%d): Will recv %d KVs\n", rank, output_length);
-                //Recv all KV pairs
-                char *data = (char *) malloc(BUFFER_SIZE);
-                rc = MPI_Recv(data, output_length * sizeof(KeyValue), MPI_CHAR, i, tag, MPI_COMM_WORLD, &Stat);
-                //kvs[i] = &((KeyValue *) data);
-                printf("KVS TABLE:\n");
-                for (int i = 0; i < output_length; i++) {
-                    printf("%s - %d\n", ((KeyValue *) data)[i].key, ((KeyValue *) data)[i].val);
-                    final_kvs[kv_index] = ((KeyValue *) data)[i];
-                    kv_index++;
-                }
-                free(data);
-                //append kvs
-                printf("Rank (%d): Final KVS appended! %d\n", rank, output_length);
+            //increment
+            sender = (sender < num_map_workers) ? sender + 1 : 1;
+            files_no++;
+        }
+        printf("Rank (%d): received all KV pairs and start reduce.\n", rank);
+        //match
+        //Init key value pairs
+        for (int k = 0; k < kvs_length; k++) {
+            printf("Here 1?\n");
+            match[k].key, kvs_list[0][k].key;
+            printf("Here 444?\n");
+            match[k].vals[0] = kvs_list[0][k].val;
+        }
+        //Loop other files
+        for (int file_no = 1; file_no < num_files; file_no++) {
+            for (int k = 0; k < kvs_length; k++) {
+                if (match[k].key != kvs_list[file_no][k].key) printf("OOOOOPS!");
+                match[k].vals[file_no - 1] = kvs_list[file_no][k].val;
             }
         }
+        //reduce
+        printf("Here 2?\n");
+        KeyValue *reduce_result;
+        int reduce_result_length = 0;
+        for (int i = 0; i < kvs_length; i++) {
+            //KeyValue reduce(char key[8], int *vals, int len);
+            KeyValue kv = reduce(match[i].key, match[i].vals, num_map_workers);
+            printf("%s - %d\n", kv.key, kv.val);
+            reduce_result[reduce_result_length] = kv;
+            reduce_result_length++;
+        }
+        printf("Rank (%d): finished reduce and send back to master.\n", rank);
+        print_kvs(reduce_result, reduce_result_length);
+        rc = MPI_Send(reduce_result, reduce_result_length * sizeof(KeyValue), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
     }
 
-//Clean up
+    //Clean up
     MPI_Finalize();
     return 0;
 }

@@ -9,5 +9,5 @@
 #define UTILS_H_
 
 int partition(char *key, int num_partitions);
-char * mapTochar( MapTaskOutput* output );
+void print_kvs(KeyValue *kvs ,int kvs_length);
 #endif 

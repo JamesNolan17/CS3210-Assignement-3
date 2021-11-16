@@ -14,6 +14,11 @@ typedef struct _KeyValue {
     int val;
 } KeyValue;
 
+typedef struct _KeyValueArray {
+    char key[8];
+    int *vals;
+} KeyValueArray;
+
 typedef struct _MapTaskOutput {
     int len;                // Length of `kvs` array
     KeyValue *kvs;          // Array of KeyValue items

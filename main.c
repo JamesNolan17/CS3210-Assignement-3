@@ -143,24 +143,22 @@ int main(int argc, char **argv) {
         int kvs_length;
         int file_no_reduce = 0;
         int sender = 1;
-        KeyValue *kvs_list[num_files];
+        KeyValue **kvs_list = (KeyValue **) malloc(BUFFER_SIZE);
         while (file_no_reduce < num_files) {
-           // printf("Rank (%d): Waiting %d\n", rank, sender);
+            printf("Rank (%d): Waiting %d\n", rank, sender);
             rc = MPI_Recv(&kvs_length, sizeof(int), MPI_INT, sender, tag, MPI_COMM_WORLD, &Stat);
-          //  printf("Rank (%d): received %d KV pairs from map worker %d\n", rank, kvs_length, sender);
-
+            printf("Rank (%d): received %d KV pairs from map worker %d\n", rank, kvs_length, sender);
             char *data = (char *) malloc(BUFFER_SIZE);
             rc = MPI_Recv(data, kvs_length * sizeof(KeyValue), MPI_CHAR, sender, tag, MPI_COMM_WORLD, &Stat);
             KeyValue *kvs = ((KeyValue *) data);
-          //  printf("file_no_reduce: %d\n", file_no_reduce);
-            kvs_list[file_no_reduce] = kvs;
+            printf("file_no_reduce: %d\n", file_no_reduce);
+            kvs_list[file_no_reduce] = ((KeyValue *) data);
             printf("KVS TABLE:\n");
             for (int i = 0; i < kvs_length; i++) {
-                printf("%s - %d\n",kvs_list[file_no_reduce][i].key, kvs_list[file_no_reduce][i].val);
+                printf("%s - %d\n", kvs_list[file_no_reduce][i].key, kvs_list[file_no_reduce][i].val);
                 kv_index++;
             }
-            free(data);
-
+            //free(data);
             //increment
             sender = (sender < num_map_workers) ? sender + 1 : 1;
             file_no_reduce++;
@@ -168,15 +166,18 @@ int main(int argc, char **argv) {
         printf("Rank (%d): received all KV pairs and start reduce.\n", rank);
         //match
         //Init key value pairs
+
         for (int k = 0; k < kvs_length; k++) {
             printf("Here 1? %d\n", k);
             printf("Hips : %s\n", kvs_list[0][k].key);
-//            strcpy(match[k].key, kvs_list[0][k].key);
-//            printf("Here 444?%s\n", match[k].key);
-//            match[k].vals[0] = kvs_list[0][k].val;
-//            printf("Here 444 End?\n");
-        }
-//        //Loop other files (If applicable)
+            match[k] = (KeyValueArray) {.key="", .vals=kvs_list[0][k].val}
+        };
+        strncpy(match[k].key, kvs_list[0][k].key, strlen(match[k].key) + 1);
+        printf("Here 444?%s\n", match[k].key);
+        //match[k].vals[0] = kvs_list[0][k].val;
+        printf("Here 444 End?\n");
+    }
+    //Loop other files (If applicable)
 //        printf("Entering loop, num_files = %d\n", num_files);
 //        for (int file_no = 1; file_no < num_files; file_no++) {
 //            printf("fileno %d\n", file_no);
@@ -200,7 +201,7 @@ int main(int argc, char **argv) {
 //        printf("Rank (%d): finished reduce and send back to master.\n", rank);
 //        print_kvs(reduce_result, reduce_result_length);
 //        rc = MPI_Send(reduce_result, reduce_result_length * sizeof(KeyValue), MPI_CHAR, 0, tag, MPI_COMM_WORLD);
-    }
+//    }
 
     //Clean up
     MPI_Finalize();

@@ -52,6 +52,7 @@ int main(int argc, char **argv) {
         printf("# of reduce workers: %d\n", num_reduce_workers);
         char *filename = (char *) malloc(BUFFER_SIZE);
         FILE *input_fptr;
+        FILE *output_fptr;
 
         for (int i = 0; i < num_files; i++) {
             char idx[20];
@@ -90,11 +91,37 @@ int main(int argc, char **argv) {
                 dest++;
             }
         }
-        //Receive results and combine them
-        for (int i = 0; i < num_reduce_workers; i++) {
 
+        //Receive results and combine them
+        output_fptr = fopen(output_file_name, "w");
+        if (output_fptr == NULL) {
+            /* Unable to open file hence exit */
+            printf("Unable to open file.\n");
+            exit(EXIT_FAILURE);
+        }
+        KeyValue **kvs_list = (KeyValue **) malloc(BUFFER_SIZE);
+        int len[num_reduce_workers];
+        for (int i = 0; i < num_reduce_workers; i++) {
+            int reduce_worker_idx = i + num_map_workers + 1;
+            char *data = (char *) malloc(BUFFER_SIZE);
+            int length;
+            tag = 0;
+            rc = MPI_Recv(&length, sizeof(int), MPI_INT, reduce_worker_idx, tag, MPI_COMM_WORLD, &Stat);
+            rc = MPI_Recv(data, length * sizeof(KeyValue), MPI_CHAR, reduce_worker_idx, tag, MPI_COMM_WORLD, &Stat);
+            KeyValue *kvs = ((KeyValue *) data);
+//            printf("LENGTH: %d\n", length);
+//            printf("OUTPUT_VALUE: %s %d\n", kvs[0].key, kvs[0].val);
+            kvs_list[i] = kvs;
+            len[i] = length;
         }
 
+        for (int i = 0; i < num_reduce_workers; i++) {
+            for (int j = 0; j < len[i]; j++) {
+             fprintf(output_fptr, "%s %d\n", kvs_list[i][j].key, kvs_list[i][j].val);
+            }
+        }
+        printf("HAHA\n");
+        fclose(output_fptr);
 
     } else if ((rank >= 1) && (rank <= num_map_workers)) {
         // TODO: Implement map worker process logic
@@ -138,7 +165,7 @@ int main(int argc, char **argv) {
         printf("Rank (%d): This is a reduce worker process\n", rank);
         tag = 0;
         int kv_index = 0;
-        KeyValueArray *match;
+
         //Receive from all map workers
         int kvs_length;
         int file_no_reduce = 0;
@@ -166,17 +193,33 @@ int main(int argc, char **argv) {
         printf("Rank (%d): received all KV pairs and start reduce.\n", rank);
         //match
         //Init key value pairs
-
+        KeyValue *matches = (KeyValue *) malloc(BUFFER_SIZE);
         for (int k = 0; k < kvs_length; k++) {
-            printf("Here 1? %d\n", k);
-            printf("Hips : %s\n", kvs_list[0][k].key);
-            match[k] = (KeyValueArray) {.key="", .vals=kvs_list[0][k].val}
-        };
-        strncpy(match[k].key, kvs_list[0][k].key, strlen(match[k].key) + 1);
-        printf("Here 444?%s\n", match[k].key);
-        //match[k].vals[0] = kvs_list[0][k].val;
-        printf("Here 444 End?\n");
+//            printf("Here 1? %d\n", k);
+//            printf("Hips : %s\n", kvs_list[0][k].key);
+            int values[num_files];
+           //printf("VALUES: \n");
+            for (int i = 0; i < num_files; ++i) {
+                values[i] = kvs_list[i][k].val;
+               // printf("%d, %d\n", i, values[i]);
+            }
+            KeyValue output = reduce(kvs_list[0][k].key, values, num_files);
+            matches[k] = output;
+        }
+
+        printf("OUTPUT TABLE:\n");
+        for (int i = 0; i < kvs_length; i++) {
+            printf("%s - %d\n", matches[i].key, matches[i].val);
+        }
+
+        printf("Rank (%d): finished reduce and send back to master.\n", rank);
+        tag = 0;
+        dest = 0;
+        rc = MPI_Send(&kvs_length, sizeof(int), MPI_INT, dest, tag, MPI_COMM_WORLD);
+        rc = MPI_Send(matches, kvs_length * sizeof(KeyValue), MPI_CHAR, dest, tag, MPI_COMM_WORLD);
+
     }
+
     //Loop other files (If applicable)
 //        printf("Entering loop, num_files = %d\n", num_files);
 //        for (int file_no = 1; file_no < num_files; file_no++) {
